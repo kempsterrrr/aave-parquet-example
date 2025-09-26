@@ -17,6 +17,12 @@ const processor = new EvmBatchProcessor()
   .setGateway(`https://v2.archive.subsquid.io/network/${CHAIN}`)
   .setRpcEndpoint({ url: RPC_HTTP, rateLimit: 10 })
   .setFinalityConfirmation(75)
+  .setBlockRange({ from: 16291127 }) // Start from Aave V3 deployment
+  .setFields({
+    block: {
+      timestamp: true
+    }
+  })
   .addLog({
     address: [POOL],
     topic0: [
@@ -25,7 +31,6 @@ const processor = new EvmBatchProcessor()
       poolAbi.events.Borrow.topic,
       poolAbi.events.Repay.topic,
       poolAbi.events.LiquidationCall.topic,
-      // Add more topics as needed
     ]
   })
 
@@ -34,6 +39,7 @@ const aaveEventsTable = new Table('aave_pool_events.parquet', {
   kind: Column(Types.String()),
   txHash: Column(Types.String()),
   block: Column(Types.Uint64()),
+  timestamp: Column(Types.Timestamp()),
   user: Column(Types.String()),
   reserve: Column(Types.String()),
   amount: Column(Types.String()),
@@ -54,6 +60,8 @@ const database = new Database({
 // ---- Run ----
 processor.run(database, async (ctx) => {
   for (const b of ctx.blocks) {
+    const blockTimestamp = new Date(b.header.timestamp)
+
     for (const log of b.logs) {
       switch (log.topics[0]) {
         case poolAbi.events.Supply.topic: {
@@ -62,6 +70,7 @@ processor.run(database, async (ctx) => {
             kind: 'Supply',
             txHash: log.transaction?.hash ?? '',
             block: b.header.height,
+            timestamp: blockTimestamp,
             user: ev.user,
             reserve: ev.reserve,
             amount: ev.amount.toString(),
@@ -78,6 +87,7 @@ processor.run(database, async (ctx) => {
             kind: 'Withdraw',
             txHash: log.transaction?.hash ?? '',
             block: b.header.height,
+            timestamp: blockTimestamp,
             user: ev.user,
             reserve: ev.reserve,
             amount: ev.amount.toString(),
@@ -94,6 +104,7 @@ processor.run(database, async (ctx) => {
             kind: 'Borrow',
             txHash: log.transaction?.hash ?? '',
             block: b.header.height,
+            timestamp: blockTimestamp,
             user: ev.user,
             reserve: ev.reserve,
             amount: ev.amount.toString(),
@@ -110,6 +121,7 @@ processor.run(database, async (ctx) => {
             kind: 'Repay',
             txHash: log.transaction?.hash ?? '',
             block: b.header.height,
+            timestamp: blockTimestamp,
             user: ev.user,
             reserve: ev.reserve,
             amount: ev.amount.toString(),
@@ -126,6 +138,7 @@ processor.run(database, async (ctx) => {
             kind: 'LiquidationCall',
             txHash: log.transaction?.hash ?? '',
             block: b.header.height,
+            timestamp: blockTimestamp,
             user: ev.user,
             reserve: ev.collateralAsset,
             amount: ev.liquidatedCollateralAmount.toString(),
